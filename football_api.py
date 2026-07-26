@@ -1,7 +1,9 @@
 # football_api.py
 
 import requests
-from config import API_FOOTBALL_KEY, BASE_URL
+from datetime import datetime
+
+from config import BASE_URL, API_FOOTBALL_KEY
 
 
 HEADERS = {
@@ -9,7 +11,7 @@ HEADERS = {
 }
 
 
-def api_request(endpoint, params=None):
+def api_call(endpoint, params=None):
 
     url = BASE_URL + endpoint
 
@@ -23,33 +25,16 @@ def api_request(endpoint, params=None):
 
 
 
-# Αναζήτηση ομάδας
+# Όλοι οι αγώνες της ημέρας
 
-def search_team(team_name):
+def today_matches():
 
-    data = api_request(
-        "/teams",
-        {
-            "search": team_name
-        }
-    )
+    today = datetime.now().strftime("%Y-%m-%d")
 
-    if not data.get("response"):
-        return None
-
-    return data["response"][0]["team"]
-
-
-
-# Τελευταία παιχνίδια ομάδας
-
-def get_last_matches(team_id, number=10):
-
-    data = api_request(
+    data = api_call(
         "/fixtures",
         {
-            "team": team_id,
-            "last": number
+            "date": today
         }
     )
 
@@ -57,14 +42,14 @@ def get_last_matches(team_id, number=10):
 
 
 
-# Προϊστορία μεταξύ ομάδων
+# Τελευταία παιχνίδια ομάδας
 
-def get_h2h(team1_id, team2_id):
+def last_matches(team_id):
 
-    data = api_request(
-        "/fixtures/headtohead",
+    data = api_call(
+        "/fixtures",
         {
-            "h2h": f"{team1_id}-{team2_id}",
+            "team": team_id,
             "last": 10
         }
     )
@@ -73,14 +58,15 @@ def get_h2h(team1_id, team2_id):
 
 
 
-# Στατιστικά αγώνα
+# Προϊστορία
 
-def get_fixture_statistics(fixture_id):
+def h2h(team1, team2):
 
-    data = api_request(
-        "/fixtures/statistics",
+    data = api_call(
+        "/fixtures/headtohead",
         {
-            "fixture": fixture_id
+            "h2h": f"{team1}-{team2}",
+            "last": 10
         }
     )
 
@@ -88,11 +74,11 @@ def get_fixture_statistics(fixture_id):
 
 
 
-# Predictions API (όπου διαθέσιμο)
+# Predictions API
 
-def get_prediction(fixture_id):
+def predictions(fixture_id):
 
-    data = api_request(
+    data = api_call(
         "/predictions",
         {
             "fixture": fixture_id
@@ -103,26 +89,14 @@ def get_prediction(fixture_id):
 
 
 
-# Λίστα διοργανώσεων
+# Στατιστικά αγώνα
 
-def get_leagues():
+def fixture_stats(fixture_id):
 
-    data = api_request(
-        "/leagues"
-    )
-
-    return data.get("response", [])
-
-
-
-# Σημερινά παιχνίδια
-
-def get_today_fixtures():
-
-    data = api_request(
-        "/fixtures",
+    data = api_call(
+        "/fixtures/statistics",
         {
-            "date": "2026-07-27"
+            "fixture": fixture_id
         }
     )
 
