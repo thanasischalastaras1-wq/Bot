@@ -10,19 +10,23 @@ from telegram.ext import (
 from config import TELEGRAM_TOKEN
 
 from football_api import (
-    search_team,
-    get_last_matches,
-    get_h2h
+    today_matches,
+    last_matches,
+    h2h
 )
 
 from analyzer import (
-    get_form,
-    calculate_goal_stats,
+    calculate_stats,
+    team_form,
     analyze_1x2,
-    analyze_markets,
-    analyze_h2h,
-    best_pick
+    analyze_goals,
+    h2h_analysis,
+    best_selection
 )
+
+
+# προσωρινή μνήμη αγώνων
+MATCH_LIST = {}
 
 
 
@@ -30,110 +34,183 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         """
-⚽ Football Deep Data Bot
+⚽ Deep Data Football Bot
 
-Χρήση:
+Εντολές:
 
-/analyze Ομάδα1 Ομάδα2
+/today
+➡️ Όλοι οι σημερινοί αγώνες
 
-Παράδειγμα:
-/analyze Liverpool Arsenal
+/analyze 1
+➡️ Ανάλυση αγώνα από τη λίστα
 """
     )
 
 
 
+
+
+async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    global MATCH_LIST
+
+
+    matches = today_matches()
+
+
+    if not matches:
+
+        await update.message.reply_text(
+            "Δεν υπάρχουν αγώνες σήμερα."
+        )
+
+        return
+
+
+
+    MATCH_LIST = {}
+
+
+    text = "⚽ Σημερινοί αγώνες\n\n"
+
+
+    counter = 1
+
+
+    for match in matches:
+
+        home = match["teams"]["home"]["name"]
+        away = match["teams"]["away"]["name"]
+
+        league = match["league"]["name"]
+
+
+        MATCH_LIST[str(counter)] = match
+
+
+        text += (
+            f"{counter}) ⚽ {home} - {away}\n"
+            f"🏆 {league}\n\n"
+        )
+
+
+        counter += 1
+
+
+
+    await update.message.reply_text(
+        text
+    )
+
+
+
+
+
+
+
 async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    if len(context.args) < 2:
+    global MATCH_LIST
+
+
+    if not context.args:
 
         await update.message.reply_text(
-            "Χρήση:\n/analyze Liverpool Arsenal"
-        )
-
-        return
-
-
-    team1_name = context.args[0]
-    team2_name = context.args[1]
-
-
-    team1 = search_team(team1_name)
-    team2 = search_team(team2_name)
-
-
-    if not team1 or not team2:
-
-        await update.message.reply_text(
-            "❌ Δεν βρέθηκαν οι ομάδες"
+            "Χρήση:\n/analyze 1"
         )
 
         return
 
 
 
-    team1_matches = get_last_matches(
-        team1["id"],
-        10
-    )
-
-    team2_matches = get_last_matches(
-        team2["id"],
-        10
-    )
+    number = context.args[0]
 
 
-    h2h = get_h2h(
-        team1["id"],
-        team2["id"]
-    )
+    if number not in MATCH_LIST:
+
+        await update.message.reply_text(
+            "Δεν βρέθηκε ο αγώνας."
+        )
+
+        return
 
 
 
-    team1_stats = calculate_goal_stats(
-        team1_matches,
-        team1["id"]
-    )
+    match = MATCH_LIST[number]
 
 
-    team2_stats = calculate_goal_stats(
-        team2_matches,
-        team2["id"]
-    )
+    fixture_id = match["fixture"]["id"]
+
+
+    home = match["teams"]["home"]
+
+    away = match["teams"]["away"]
 
 
 
-    result_1x2 = analyze_1x2(
-        team1_stats,
-        team2_stats
+    home_matches = last_matches(
+        home["id"]
     )
 
 
-    markets = analyze_markets(
-        team1_stats,
-        team2_stats
+    away_matches = last_matches(
+        away["id"]
     )
 
 
-    h2h_stats = analyze_h2h(
-        h2h
+    history = h2h(
+        home["id"],
+        away["id"]
+    )
+
+
+
+    home_stats = calculate_stats(
+        home_matches,
+        home["id"]
+    )
+
+
+    away_stats = calculate_stats(
+        away_matches,
+        away["id"]
+    )
+
+
+
+    one_x_two = analyze_1x2(
+        home_stats,
+        away_stats
+    )
+
+
+    goals = analyze_goals(
+        home_stats,
+        away_stats
+    )
+
+
+    h2h_data = h2h_analysis(
+        history
     )
 
 
     picks = [
-        result_1x2
-    ] + markets
+        one_x_two
+    ] + goals
 
 
 
-    best, confidence = best_pick(
+    best, confidence = best_selection(
         picks
     )
 
 
 
     text = f"""
-⚽ {team1['name']} - {team2['name']}
+⚽ {home['name']} - {away['name']}
+
+🏆 {match['league']['name']}
 
 
 📊 Deep Data Ανάλυση
@@ -144,9 +221,9 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
 """
 
 
-    for pick in picks:
+    for p in picks:
 
-        text += f"✅ {pick}\n"
+        text += f"✅ {p}\n"
 
 
 
@@ -154,33 +231,33 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 📈 Φόρμα
 
-{team1['name']}:
-{get_form(team1_matches, team1['id'])}
+{home['name']}:
+{team_form(home_matches, home['id'])}
 
 
-{team2['name']}:
-{get_form(team2_matches, team2['id'])}
+{away['name']}:
+{team_form(away_matches, away['id'])}
 
 
 
 ⚔ Προϊστορία
 
-• G/G στα {h2h_stats['gg']} τελευταία
-• Over 2.5 στα {h2h_stats['over25']} τελευταία
-• {team1['name']} νίκες: {h2h_stats['home']}
-• {team2['name']} νίκες: {h2h_stats['away']}
-• Ισοπαλίες: {h2h_stats['draw']}
+• G/G: {h2h_data['gg']}/{h2h_data['games']}
+• Over 2.5: {h2h_data['over25']}/{h2h_data['games']}
+• {home['name']} νίκες: {h2h_data['home']}
+• {away['name']} νίκες: {h2h_data['away']}
+• Ισοπαλίες: {h2h_data['draw']}
 
 
 
 📊 xGoals (Expected Goals)
 
-{team1['name']}:
-⚽ xG δεδομένα όπου διαθέσιμα
+{home['name']}:
+Έλεγχος διαθέσιμων xG δεδομένων
 
 
-{team2['name']}:
-⚽ xG δεδομένα όπου διαθέσιμα
+{away['name']}:
+Έλεγχος διαθέσιμων xG δεδομένων
 
 
 
@@ -192,17 +269,25 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 """
 
+
+
     await update.message.reply_text(
         text
     )
 
 
 
+
+
+
+
 def main():
+
 
     app = Application.builder().token(
         TELEGRAM_TOKEN
     ).build()
+
 
 
     app.add_handler(
@@ -215,18 +300,27 @@ def main():
 
     app.add_handler(
         CommandHandler(
+            "today",
+            today
+        )
+    )
+
+
+    app.add_handler(
+        CommandHandler(
             "analyze",
             analyze
         )
     )
 
 
-    print(
-        "Bot started..."
-    )
+
+    print("Bot running...")
 
 
     app.run_polling()
+
+
 
 
 
